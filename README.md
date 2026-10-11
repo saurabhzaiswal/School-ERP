@@ -33,11 +33,12 @@ Copy-Item backend/.env.example backend/.env
 Edit `backend/.env` before starting the API. With the **default** Compose values, set:
 
 ```dotenv
-DATABASE_URL="postgresql://school:school_local_only@localhost:5432/school_erp?schema=public"
-REDIS_URL="redis://127.0.0.1:6379"
-SESSION_SECRET="replace-with-a-random-secret-of-at-least-32-characters"
+DATABASE_URL="postgresql://postgres:1234@localhost:5432/school_erp?schema=public"
+SESSION_SECRET="cbf81c0694507d3e06b2a65821c359efb6b3ec7aa449ea5c84c1df680ee83fdd"
 PORT=3000
+REDIS_URL="redis://127.0.0.1:6379"
 FRONTEND_ORIGIN="http://localhost:5173"
+DEMO_PASSWORD="SchoolDemo@2026"
 ```
 
 Do **not** use the demo database password or example session secret for real deployments. If you already have local database/Redis servers, use their actual URLs and avoid conflicting Compose ports.
