@@ -1,0 +1,153 @@
+:root {
+  --primary-color: #176a68;
+  --fade-border-color: #cbd8d4;
+  --primary-text-color: #17313b;
+  font-family: 'Segoe UI', Arial, sans-serif;
+  color: #17313b;
+  background: #f5f6f2;
+  font-synthesis: none;
+}
+* {
+  box-sizing: border-box;
+}
+body {
+  margin: 0;
+  min-width: 320px;
+}
+button,
+input,
+select {
+  font: inherit;
+}
+button {
+  cursor: pointer;
+}
+.field {
+  width: 100%;
+  border: 1px solid #d6dedb;
+  background: #fff;
+  border-radius: 9px;
+  padding: 0.72rem 0.82rem;
+  outline: none;
+  transition:
+    border 0.15s,
+    box-shadow 0.15s;
+}
+.field::placeholder,
+.app-input__input::placeholder { color: #819599; opacity: 1; }
+.app-input__input { border-color: var(--fade-border-color); background: #fff; }
+.app-input__input:focus-visible,
+.field:focus-visible { border-color: #2b837d; box-shadow: 0 0 0 3px #d8eeea; }
+.field:focus {
+  border-color: #2b837d;
+  box-shadow: 0 0 0 3px #d8eeea;
+}
+.vue-tel-input { min-height: 47px; border: 1px solid var(--fade-border-color) !important; border-radius: 9px !important; background: #fff; font-family: inherit; }
+.vue-tel-input:focus-within { border-color: #2b837d !important; box-shadow: 0 0 0 3px #d8eeea !important; }
+.vue-tel-input input { font-family: inherit; color: #17313b; }
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  border-radius: 9px;
+  padding: 0.72rem 1rem;
+  font-weight: 650;
+  border: 1px solid transparent;
+  transition:
+    transform 0.15s,
+    background 0.15s;
+}
+.btn:hover {
+  transform: translateY(-1px);
+}
+.btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  transform: none;
+}
+.btn-primary {
+  background: #176a68;
+  color: #fff;
+}
+.btn-primary:hover {
+  background: #115451;
+}
+.btn-secondary {
+  background: #fff;
+  color: #224750;
+  border-color: #d6dedb;
+}
+.card {
+  background: #fff;
+  border: 1px solid #e3e9e5;
+  border-radius: 16px;
+  box-shadow: 0 7px 26px #1b453609;
+}
+.eyebrow {
+  text-transform: uppercase;
+  font-size: 0.72rem;
+  letter-spacing: 0.12em;
+  font-weight: 750;
+  color: #557c7b;
+}
+.page-title {
+  font-family: inherit;
+  font-size: clamp(2rem, 4vw, 2.7rem);
+  letter-spacing: -0.035em;
+  color: #173b45;
+  line-height: 1.1;
+}
+.table-wrap {
+  overflow-x: auto;
+}
+table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+}
+th {
+  color: #678087;
+  text-transform: uppercase;
+  font-size: 0.68rem;
+  letter-spacing: 0.09em;
+  font-weight: 750;
+  padding: 0.9rem 1rem;
+  background: #f8faf8;
+  white-space: nowrap;
+}
+td {
+  border-top: 1px solid #edf0ee;
+  padding: 0.9rem 1rem;
+  font-size: 0.9rem;
+}
+tr:hover td {
+  background: #fcfdfb;
+}
+.badge {
+  display: inline-block;
+  border-radius: 999px;
+  font-size: 0.74rem;
+  font-weight: 700;
+  padding: 0.3rem 0.65rem;
+  white-space: nowrap;
+}
+.badge-green {
+  background: #e5f5ed;
+  color: #1c7652;
+}
+.badge-amber {
+  background: #fff2d8;
+  color: #986514;
+}
+.badge-red {
+  background: #fce9e6;
+  color: #ae493b;
+}
+.badge-slate {
+  background: #edf1f1;
+  color: #53676c;
+}
+.vfm__overlay {
+  background: #09242db3 !important;
+}

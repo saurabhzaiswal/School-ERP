@@ -1,0 +1,128 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Role {
+  ADMIN
+  TEACHER
+}
+
+enum Gender {
+  MALE
+  FEMALE
+  OTHER
+  PREFER_NOT_TO_SAY
+}
+
+enum FeeStatus {
+  PAID
+  PENDING
+  PARTIALLY_PAID
+}
+
+enum AttendanceStatus {
+  PRESENT
+  ABSENT
+  LATE
+}
+
+model User {
+  id           String              @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  name         String
+  email        String              @unique
+  gender       Gender?
+  phoneNumber  String?             @db.VarChar(16)
+  passwordHash String
+  role         Role
+  active       Boolean             @default(true)
+  assignments  TeacherAssignment[]
+  recorded     Attendance[]        @relation("recordedBy")
+  audits       AttendanceAudit[]
+  activities   ActivityLog[]
+  createdAt    DateTime            @default(now())
+  updatedAt    DateTime            @updatedAt
+
+  @@index([role, active, name])
+}
+
+model TeacherAssignment {
+  id        String @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  teacherId String @db.Uuid
+  grade     String
+  section   String
+  teacher   User   @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+
+  @@unique([teacherId, grade, section])
+  @@index([grade, section])
+}
+
+model Student {
+  id              String       @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  admissionNumber String       @unique
+  name            String
+  gender          Gender?
+  email           String?      @db.VarChar(255)
+  phoneNumber     String?      @db.VarChar(16)
+  grade           String
+  section         String
+  guardianName    String
+  active          Boolean      @default(true)
+  feeStatus       FeeStatus    @default(PAID)
+  amountDue       Decimal      @default(0) @db.Decimal(12, 2)
+  attendance      Attendance[]
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  @@index([grade, section, name])
+  @@index([feeStatus, grade, section])
+}
+
+model Attendance {
+  id           String           @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  studentId    String           @db.Uuid
+  date         DateTime         @db.Date
+  status       AttendanceStatus
+  recordedById String           @db.Uuid
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+  student      Student          @relation(fields: [studentId], references: [id], onDelete: Restrict)
+  recordedBy   User             @relation("recordedBy", fields: [recordedById], references: [id])
+  audits       AttendanceAudit[]
+
+  @@unique([studentId, date])
+  @@index([date, status])
+}
+
+model AttendanceAudit {
+  id           String           @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  attendanceId String           @db.Uuid
+  changedById  String           @db.Uuid
+  oldStatus    AttendanceStatus?
+  newStatus    AttendanceStatus
+  changedAt    DateTime         @default(now())
+  attendance   Attendance       @relation(fields: [attendanceId], references: [id], onDelete: Cascade)
+  changedBy    User             @relation(fields: [changedById], references: [id])
+
+  @@index([attendanceId, changedAt])
+}
+
+model ActivityLog {
+  id         String   @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  actorId    String   @db.Uuid
+  action     String
+  entityType String
+  entityId   String?
+  summary    String
+  details    Json?
+  createdAt  DateTime @default(now())
+  actor      User     @relation(fields: [actorId], references: [id], onDelete: Restrict)
+
+  @@index([createdAt(sort: Desc), id(sort: Desc)])
+  @@index([actorId, createdAt(sort: Desc)])
+  @@index([entityType, entityId, createdAt(sort: Desc)])
+}

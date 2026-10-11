@@ -1,0 +1,41 @@
+{
+  "name": "frontend",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "test": "node --test test/*.test.mjs",
+    "preview": "vite preview",
+    "format": "prettier --write --experimental-cli src/"
+  },
+  "dependencies": {
+    "@popperjs/core": "^2.11.8",
+    "@vuepic/vue-datepicker": "^9.0.2",
+    "axios": "^1.20.0",
+    "floating-vue": "^5.4.0",
+    "lottie-web": "^5.13.0",
+    "moment": "^2.30.1",
+    "pinia": "^4.0.3",
+    "v-wave": "^3.0.4",
+    "vue": "^3.5.42",
+    "vue-final-modal": "^4.5.5",
+    "vue-router": "^5.3.1",
+    "vue-tel-input": "^9.9.0",
+    "vue-toastification": "^2.0.0-rc.5",
+    "vue3-click-away": "^1.2.4"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.3.3",
+    "@vitejs/plugin-vue": "^6.0.8",
+    "prettier": "3.9.6",
+    "sass": "^1.105.1",
+    "tailwindcss": "^4.3.3",
+    "vite": "^8.2.2",
+    "vite-plugin-vue-devtools": "^8.2.1"
+  },
+  "engines": {
+    "node": "^22.18.0 || >=24.12.0"
+  }
+}
