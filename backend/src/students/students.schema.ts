@@ -21,8 +21,8 @@ const studentBaseSchema = z
     grade,
     section,
     guardianName: z.string().trim().min(2).max(100),
-    active: z.boolean().default(true),
-    feeStatus: z.enum(['PAID', 'PENDING', 'PARTIALLY_PAID']).default('PAID'),
+    active: z.boolean(),
+    feeStatus: z.enum(['PAID', 'PENDING', 'PARTIALLY_PAID']),
     amountDue: z.coerce
       .number()
       .min(0)
@@ -30,13 +30,16 @@ const studentBaseSchema = z
       .refine(
         (v) => Math.abs(v * 100 - Math.round(v * 100)) < 1e-8,
         'Use at most two decimal places',
-      )
-      .default(0),
+      ),
   })
   .strict();
 
 // Create student validation
-export const studentSchema = studentBaseSchema.refine(
+export const studentSchema = studentBaseSchema.extend({
+  active: z.boolean().default(true),
+  feeStatus: z.enum(['PAID', 'PENDING', 'PARTIALLY_PAID']).default('PAID'),
+  amountDue: studentBaseSchema.shape.amountDue.default(0),
+}).refine(
   (v) => (v.feeStatus === 'PAID' ? v.amountDue === 0 : v.amountDue > 0),
   {
     message:

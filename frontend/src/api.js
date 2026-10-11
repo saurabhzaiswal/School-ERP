@@ -18,7 +18,7 @@ client.interceptors.response.use(
   async (error) => {
     if (error.response?.headers?.['x-csrf-token']) csrfToken = error.response.headers['x-csrf-token']
     const endpoint = String(error.config?.url || '')
-    if (error.response?.status === 401 && !['/auth/login', '/auth/me'].includes(endpoint)) {
+    if (error.response?.status === 401 && !['/auth/login', '/auth/profile'].includes(endpoint)) {
       csrfToken = ''
       const [{ useSessionStore }, { default: router }] = await Promise.all([import('./stores/session'), import('./router')])
       useSessionStore().clear()

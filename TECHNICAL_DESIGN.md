@@ -1,34 +1,35 @@
 # School ERP Technical Design and Handover
 
-Candidate: Saurabh · Version: 1.1 · 11 October 2026 · Project: School ERP assessment · Stack: Vue 3 / NestJS 12 / Prisma 7 / PostgreSQL 18
+Candidate: Saurabh · Version: 1.1 · Verified 11 October 2026 · Vue 3, NestJS 12, Prisma 7, PostgreSQL 18, Redis
 
-This document describes the implementation in this folder. It covers the required student, attendance, fee follow-up, and role flows, then explains how to run and verify them. A local PostgreSQL 18 database was migrated and seeded, and a live API smoke test passed.
+This document describes the submitted School ERP module and the checks run against it. It covers student records, attendance, fee follow-up, Admin and Teacher permissions, staff management, and activity history. The fresh seed and live API smoke checks passed on a local PostgreSQL and Redis setup; remaining limits are stated below.
 
 ## 1. Executive summary and scope
 
-The application gives school staff a student directory, daily class register, individual attendance history, and an Admin-only list of outstanding fee amounts. Admins can maintain student records and attendance. Teachers can read students and manage attendance for their assigned class/section. The bundled seed assigns the demo teacher to class 8 section A; consult `backend/prisma/seed.ts` if using an expanded replacement. Admins can also manage users and class assignments through the staff API, and staff activity is queryable.
-
-All required assignment flows are implemented in code. Authentication uses local seeded accounts. Optional attendance audit is implemented. CSV export, payment gateway, fee ledger, branch support, a full deployment stack, and account-management **frontend UI** are outside scope; account-management **backend routes** exist. A student's current class/section controls access to their entire history; enrollment history would be needed for a production transfer workflow.
+Admins can create and edit students, view outstanding fees, record or correct attendance, manage staff and class assignments, and review all activity. Teachers see assigned classes and can record or correct attendance for those students. The UI includes responsive tables, filters, modals, validation feedback, and skeleton loading. Admission numbers are server-generated. The assignment's payment gateway, fee ledger, invoices, branch support, CSV export, and production operations are outside this implementation. Names and contact details in the seed are fictional.
 
 ## 2. Technology stack and rationale
 
-| Layer | Choice | Reason |
+| Layer | Implementation | Reason |
 | --- | --- | --- |
-| UI | Vue 3 Options API, Vite, Vue Router, Axios | Modular screens, credentialed API client, lazy route chunks |
-| Styling | Tailwind CSS and SCSS | Fast responsive layout with a small set of reusable design rules |
-| API | Node.js 24, NestJS 12, TypeScript | Clear controllers/services and predictable HTTP errors |
-| Validation | Zod 4 | Shared-shaped runtime input rules and safe rejection of unknown fields |
-| Data | PostgreSQL 18, Prisma ORM 7 | Relational constraints, typed queries, UUIDv7 database defaults |
-| Authentication | bcryptjs, Redis-backed express-session and HTTP-only cookie | Password hash at rest; session ID in cookie, CSRF protection |
-| Tests | Vitest and live smoke script | Service rules and real HTTP/database checks when run locally |
+| Frontend | Vue 3 Options API, Vite, Vue Router, Pinia, Axios | Modular screens, session state, API client, lazy routes |
+| UI | Tailwind, SCSS, Vue Final Modal, Popper, vue-toastification, Moment | Responsive components, accessible positioning, user feedback |
+| Backend | Node.js 24, NestJS 12, TypeScript, DTOs and Zod | Resource modules and runtime validation |
+| Persistence | Prisma 7 with PostgreSQL 18 | Relational constraints, typed queries, UUIDv7 IDs |
+| Authentication | bcrypt, Redis-backed express-session, CSRF | Server-controlled sessions and protected writes |
+| Verification | Vitest and real HTTP/database smoke scripts | Fast rule checks plus integration evidence |
 
-The frontend uses Vue Final Modal, vue-select, v-wave, vue-toastification, vue3-click-away, Moment, and Floating Vue tooltips. The requested `v-tooltip@2.1.3` targets Vue 2, so Floating Vue supplies the Vue 3-compatible directive. The supplied Lottie file is used for full-page loading; tables show lightweight skeletons. A server-rendered application was considered, but Vue and NestJS align with the supplied starter projects and make the API permission boundary explicit.
+A server-rendered UI was an alternative, but the provided Vue/Nest starter and the requested Options API favoured a separate frontend and API. Redis is used for sessions and the configured BullMQ worker, not to cache student lists.
+
+The frontend uses Vue Final Modal, vue-select, v-wave, vue-toastification, vue3-click-away, Moment, and Floating Vue tooltips. The supplied Lottie file is used for full-page loading; tables show lightweight skeletons. A server-rendered application was considered, but Vue and NestJS align with the supplied starter projects and make the API permission boundary explicit.
+
 
 ## 3. Architecture and request flow
 
 ```mermaid
 flowchart LR
-  UI[Vue Options API screens] --> API[NestJS resource controllers]
+  UI[Vue screens] --> AX[Axios with cookie and CSRF]
+  AX --> API[NestJS resource controllers]
   API --> V[DTO and Zod validation]
   V --> S[Auth Students Attendance Users Activity services]
   S --> P[Prisma Client and pg adapter]
@@ -36,10 +37,13 @@ flowchart LR
   API --> SESSION[Redis-backed sessions]
   S --> QUEUE[BullMQ activity queue on Redis]
 ```
-
 For a teacher recording attendance, the UI sends a student ID, date, and status. The controller validates the body. `AttendanceService` loads the student, checks that the teacher has the student's class/section assignment, rejects inactive students, then creates attendance and audit rows in one transaction. A database unique index on `(studentId, date)` rejects concurrent duplicate requests. The service translates that constraint error to HTTP 409. NestJS returns validation errors as 400, missing rows as 404, missing sessions as 401, and forbidden class access as 403.
 
+
+For an attendance mark, the UI sends student ID, ISO date and status. DTO and Zod validation reject malformed input. The service loads the student, checks the current user's assigned class, and writes attendance, correction audit where relevant, and activity in a transaction. PostgreSQL's unique `(studentId, date)` index resolves concurrent duplicate attempts; the API returns 409. Validation, missing, unauthenticated and forbidden cases return 400, 404, 401 and 403 respectively.
+
 ## 4. Data model and constraints
+
 
 ```mermaid
 erDiagram
@@ -51,102 +55,78 @@ erDiagram
   User ||--o{ ActivityLog : performs
 ```
 
-| Entity | Key fields and relationships | Constraints and indexes |
+| Entity | Key fields and relationships | Constraint or index |
 | --- | --- | --- |
-| User | UUIDv7 ID, unique email, bcrypt password hash, Admin/Teacher role, active flag, contact fields | Email unique |
-| TeacherAssignment | UUIDv7 ID, user FK, grade, section | Unique `(teacherId, grade, section)`; grade/section index |
-| Student | UUIDv7 ID, admission number, name, gender, optional email/phone, grade, section, guardian, active, fee status, decimal due | Admission number unique; class/name and fee/class indexes; SQL check requires paid = zero due and outstanding = positive due |
-| Attendance | UUIDv7 ID, student FK, date, Present/Absent/Late, recording user FK, timestamps | Unique `(studentId, date)`; date/status index |
-| AttendanceAudit | UUIDv7 ID, attendance FK, changing user FK, old/new status, timestamp | Attendance/time index |
-| ActivityLog | Actor, action, entity type/ID, summary, safe details, time | Queryable staff activity stream |
+| User | UUIDv7 ID, unique email, password hash, role, active, optional gender/phone | Unique email; role/active/name index |
+| TeacherAssignment | User FK, grade, section | Unique teacher/grade/section |
+| Student | UUIDv7 ID, admission number, name, optional gender/email/phone, grade, section, guardian, active, fee status, decimal due | Unique admission; class/name and fee/class indexes; fee/due SQL check |
+| Attendance | Student and recording-user FKs, date, status | Unique student/date; date/status index |
+| AttendanceAudit | Attendance and changing-user FKs, old/new status, timestamp | Attendance/time index |
+| ActivityLog | Actor FK, action, entity, summary, safe details, timestamp | Time and actor/time indexes |
 
-The migration uses PostgreSQL 18 `uuidv7()` defaults. A PostgreSQL sequence allocates admission numbers in `SCH-YYYY-NNNNNN` form; the API never accepts this field on create or update. The service maps Prisma unique-constraint errors to HTTP 409. The assignment requests duplicate rejection; server generation avoids typical duplicate input, while uniqueness in PostgreSQL remains the ultimate protection. `amountDue` is `DECIMAL(12,2)` to avoid floating-point storage for currency. `guardianName` and other identifying fields are non-null. The database unique indexes remain authoritative during concurrent writes.
+The API allocates `SCH-YYYY-NNNNNN` from a PostgreSQL sequence and does not accept an admission number in a create request. Seeded sample records use fixed demo numbers. PostgreSQL uniqueness remains the final protection against duplicates. Money is stored as `DECIMAL(12,2)`; Paid requires zero due and outstanding statuses require positive due.
 
 ## 5. API reference
 
-All routes start with `/api`. JSON request and response bodies are used. List responses contain `{ items, total, page, per_page, total_pages }`; `per_page` accepts 1 through 100 and the UI offers 10, 20, 50, or 100. The former `limit` query remains accepted for compatibility.
+All paths below have the `/api` prefix. Lists return `items`, `total`, `page`, `per_page`, and `total_pages`; `per_page` is capped at 100.
 
-| Method | Route | Purpose and key request fields | Role | Success / common errors |
-| --- | --- | --- | --- | --- |
-| POST | `/auth/login` | Email, password; sets signed cookie | Public | 201; 400, 401 |
-| GET | `/auth/me` | Current role and assignments | Signed in | 200; 401 |
-| POST | `/auth/logout` | Clears cookie | Any | 201 |
-| GET | `/students` | `q`, `grade`, `section`, `page`, `per_page` | Admin; assigned Teacher | 200; 400, 401 |
-| GET | `/students/:id` | Student detail | Admin; assigned Teacher | 200; 401, 403, 404 |
-| POST | `/students` | Name, grade, section, guardian, active, fee status, due; admission number generated | Admin | 201; 400, 401, 403, 409 |
-| PATCH | `/students/:id` | Any supported student fields | Admin | 200; 400, 401, 403, 404, 409 |
-| GET | `/students/dues` | Search and page students with pending/partial fees | Admin | 200; 400, 401, 403 |
-| GET | `/attendance` | `grade`, `section`, `date=YYYY-MM-DD`, `page`, `per_page`; returns paged marks and full-class totals | Admin; assigned Teacher | 200; 400, 401, 403 |
-| GET | `/attendance/student/:studentId` | Paged attendance history | Admin; assigned Teacher | 200; 400, 401, 403, 404 |
-| POST | `/attendance` | `studentId`, `date`, `status` | Admin; assigned Teacher | 201; 400, 401, 403, 404, 409 |
-| PUT | `/attendance/:id` | `{ status }` correction | Admin; assigned Teacher | 200; 400, 401, 403, 404 |
-| GET | `/users` | List/search staff with pagination | Admin | 200; 401, 403 |
-| GET | `/users/stats` | Role statistics | Admin | 200; 401, 403 |
-| GET | `/users/:id` | Staff details and assignments | Admin | 200; 401, 403, 404 |
-| POST | `/users` | Create staff account and assignments | Admin | 201; 400, 401, 403, 409 |
-| PATCH | `/users/:id` | Partial staff update, role/active/assignment changes | Admin | 200; 400, 401, 403, 404, 409 |
-| GET | `/activity` | Filterable activity log | Admin: all; Teacher: own | 200; 400, 401, 403 |
+| Method and path | Purpose and key input | Access | Success; typical errors |
+| --- | --- | --- | --- |
+| `POST /auth/login` | Email/password, start session | Public | 201; 400, 401 |
+| `GET /auth/profile` | Current user, role and assignments | Signed in | 200; 401 |
+| `POST /auth/logout` | End session | Signed in | 201; 401 |
+| `GET /students`, `GET /students/:id` | Search by name/admission; grade, section, page | Admin; Teacher in assigned classes | 200; 400, 401, 403, 404 |
+| `POST /students`, `PATCH /students/:id` | Student details, contacts, fee status/due | Admin | 201/200; 400, 401, 403, 404, 409 |
+| `GET /students/dues` | Search outstanding amounts | Admin | 200; 400, 401, 403 |
+| `GET /attendance` | Grade, section, date, page; class totals | Admin; assigned Teacher | 200; 400, 401, 403 |
+| `POST /attendance`, `PUT /attendance/:id` | Student/date/status; correct with new status | Admin; assigned Teacher | 201/200; 400, 401, 403, 404, 409 |
+| `GET /attendance/student/:studentId` | Paged individual history | Admin; assigned Teacher | 200; 401, 403, 404 |
+| `GET /users`, `GET /users/stats`, `GET /users/:id` | Staff directory, counts, detail | Admin | 200; 401, 403, 404 |
+| `POST /users`, `PATCH /users/:id` | Staff account, role, class assignments | Admin | 201/200; 400, 401, 403, 404, 409 |
+| `GET /activity` | Search, actor/role and inclusive date filters | Admin all; Teacher own | 200; 400, 401 |
 
-Example: `GET /api/students?q=aar&page=1&per_page=20`. A new mark is `POST /api/attendance` with `{"studentId":"<uuid>","date":"2026-10-10","status":"PRESENT"}`. A correction is `PUT /api/attendance/<attendance-id>` with `{"status":"LATE"}`. History uses `GET /api/attendance/student/<student-id>?page=1&per_page=20`. Pending dues use `GET /api/students/dues?q=diya`. After login or `GET /auth/me`, the `x-csrf-token` response header must be sent on writes.
+Examples: `GET /api/students?q=aar&grade=8&section=A`; `POST /api/attendance` with `{ "studentId": "<uuid>", "date": "2026-10-12", "status": "PRESENT" }`; `PUT /api/attendance/<id>` with `{ "status": "LATE" }`; `GET /api/attendance/student/<id>?page=1&per_page=20`; `GET /api/students/dues?q=diya`.
 
 ## 6. Authentication and authorisation
 
-The seed creates Admin and Teacher accounts with bcrypt hashes. Login uses an eight-hour Redis-backed `express-session` session. The HTTP-only, SameSite=Lax cookie contains a session ID; `Secure` is enabled in production. The API loads the user and assignments from the database for each authenticated request. Admin-only methods call `auth.admin`. Student-detail and history reads, class register reads, attendance creation, and corrections call `auth.classroom` using a server-loaded student or the requested class/section. Student listing adds an assignment predicate to its database query and strips fee fields from teacher responses. A changed URL or forged student ID cannot remove these server checks.
-
-State-changing requests with a session require an HMAC-derived CSRF token. Login and `GET /auth/me` return it in the `x-csrf-token` response header; the Axios client retains and sends it. Before real use, add login rate limiting, credential rotation, TLS-only deployment, and session revocation. Redis must be available at startup for session storage and BullMQ. For deployment, add TLS, rate limiting, session revocation, credential rotation and monitoring.
+Login regenerates an eight-hour Redis session. Its HTTP-only, SameSite=Lax cookie carries a session ID; the profile endpoint returns the current user and `x-csrf-token`. The Axios client sends cookies and the token on writes. The server reloads active status and assignments from PostgreSQL on authenticated requests, so deactivation takes effect without waiting for a client refresh. Admin-only service methods reject Teachers. Student detail/history and attendance operations check the server-loaded student's current grade and section; lists add the assignment predicate to the database query. Changing a URL or request payload cannot bypass these checks. Teachers do not receive fee fields.
 
 ## 7. Local setup and operation
 
-Use Node.js 24.12+, npm 11+, and PostgreSQL 18. Run `docker compose up -d` to start **PostgreSQL 18 and Redis** for local development if they are not already available. The Compose ports are bound to localhost and the default credentials are demo-only. Copy `backend/.env.example` to `backend/.env`; set `DATABASE_URL`, `REDIS_URL`, a random `SESSION_SECRET` of at least 32 characters, optional `PORT`, and `FRONTEND_ORIGIN`. With default Compose values, use `postgresql://school:school_local_only@localhost:5432/school_erp?schema=public` and `redis://127.0.0.1:6379`. No real secrets belong in the repository.
+Use Node.js 24.12+, npm 11+, PostgreSQL 18 and Redis. Set `DATABASE_URL`, `REDIS_URL`, `SESSION_SECRET` of at least 32 random characters, `FRONTEND_ORIGIN`, and optional `PORT` in `backend/.env` from `.env.example`. Keep credentials out of source control. From `backend`, run `npm ci`, `npm run db:migrate`, `npm run db:seed`, `npm run start:dev`. From `frontend`, run `npm ci`, `npm run dev`; visit `http://localhost:5173`. The development proxy expects the backend on port 3000. If that port is occupied, stop the other process or change both the backend port and Vite proxy target.
 
-In `backend`, run `npm ci`, `npm run db:migrate`, `npm run db:seed`, and `npm run start:dev`. In `frontend`, run `npm ci` and `npm run dev`. Visit `http://localhost:5173`. Local-only demo logins are `admin@school.local` and `teacher@school.local`, both with `SchoolDemo!2026` unless `DEMO_PASSWORD` was set before seeding. The bundled demo teacher has class 8 section A. If using an expanded replacement seed, confirm its class assignments. `npm test`, `npm run lint`, and `npm run build` run backend checks; `npm run test:smoke` runs the live local database check while the API is up; `npm run build` checks the frontend.
+The seed creates one Admin (`admin@school.local`), Teachers for 8/A (`teacher@school.local`) and 9/B (`teacher9@school.local`), 12 fictional students with contacts, and 30 attendance marks across three dates. The default **local-only** password is `SchoolDemo!2026`, overridable through `DEMO_PASSWORD` before seeding. Repeated seeding does not duplicate these records. A fresh database needs migrations before seeding. `npm run test:seed` checks migrations and two seed runs in a temporary database, then drops only that temporary database; the database user needs creation rights.
 
-## 8. Test plan and current verification status
+## 8. Test plan and results
 
-| Case | Expected behaviour | What to verify |
+The earlier handover's “12 tests” and “not freshly verified” statements predate this revision. The results below come from the submitted source on 12 October 2026. Backend Vitest: **24 passed / 9 files**. Frontend route tests: **3 passed**. Backend and frontend production builds passed. The backend lint command exited successfully but emitted unused-import warnings in older resource files. The live HTTP smoke test passed against local PostgreSQL and Redis. The fresh-seed test passed after two seed runs. A separate full `tsc --noEmit` check still reports errors in older `src/http.spec.ts` and `src/rules.spec.ts`; the normal Nest build excludes those spec files.
+
+| Test case | Expected result | Actual result and status |
 | --- | --- | --- |
-| Student create | Database-generated unique `SCH-YYYY-NNNNNN`; no client-supplied admission number | POST and duplicate/concurrency tests |
-| Student PATCH | Updating only `name` or `grade` must not reset omitted defaults | PATCH name-only, field-only and combined fee updates |
-| Student fee validation | Paid has zero due; outstanding statuses have positive due | Test PATCH against both existing and incoming values; check DB constraint |
-| User PATCH | Role, active state and assignments update correctly | Teacher→Admin, Admin→Teacher, last-admin protection |
-| Duplicate attendance | HTTP 409; original attendance unchanged | Duplicate date and simultaneous writes |
-| Attendance correction | New status and audit entry | Write with CSRF, then query history/audit |
-| Classroom isolation | Teacher cannot access another grade/section | GET by ID, register, history and mark writes |
-| CSRF and authentication | Unauthorized writes rejected; authorized session succeeds | Login/me header and cookie flow |
-| Search and pagination | Correct items, totals and role visibility | Students, users, dues, activity and attendance |
-| Queue/session dependencies | Session and background queue start successfully | PostgreSQL and Redis both healthy |
+| Create/search students; admission uniqueness | New API records receive a unique number; searches/filtering work; duplicate number is blocked | Live API create/search/pagination passed; direct duplicate insert returned PostgreSQL 23505; client-supplied number returned 400. **Pass** |
+| Duplicate attendance, including concurrency | One mark per student/date; other request returns 409 | Concurrent POSTs returned 201 and 409. **Pass** |
+| Authorised correction | Existing mark changes and audit row records old/new status | PUT returned 200; history and audit showed PRESENT → LATE. **Pass** |
+| Teacher same-class access | Assigned 8/A Teacher can read and mark 8/A | Detail read and mark succeeded. **Pass** |
+| Teacher cross-class direct requests | 403 for detail, register, history, write | 9/B direct requests returned 403. **Pass** |
+| Invalid input and CSRF | 400 for invalid values; 403 for missing CSRF; no invalid write | Invalid date/fee inputs returned 400; missing CSRF returned 403. **Pass** |
+| Student PATCH name-only and fee updates | Omitted fields retained; fee invariant enforced | Name-only retained PENDING/1250; invalid fee-only returned 400; valid combined change succeeded. **Pass** |
+| User PATCH role and assignments | Teacher/Admin transitions keep assignments consistent | Promotion cleared assignments; demotion restored 8/A. **Pass** |
+| Session/profile/deactivation | Profile returns user; deactivated account loses access | `/auth/profile` returned 200 then 401 after deactivation. **Pass** |
+| Fresh seed and repeatability | Migrations apply; seed has stable counts on rerun | Temporary DB had 3 users, 12 students, 30 marks and 30 audits after each run. **Pass** |
 
-**Current status (not a fresh pass report):** The previous project handover reported 12 passing backend tests and a successful historical live smoke check **before** the later refactor. The refactored ZIP, any later local student PATCH fix, the expanded seed, and updated Compose/PM2 configurations were not run together in this editing environment. No new passing results are claimed. Run backend `npm test`, `npm run lint`, `npm run build`, `npm run test:smoke` and frontend `npm run build` locally; the smoke test needs the API and both data services running. Pay special attention to student partial-update behaviour and user role/assignment updates.
+Browser layout across devices, keyboard and screen-reader interaction, deployment under HTTPS, large data volumes, and real school workflows were not tested here. A reviewer can run `npm test`, `npm run lint`, `npm run build`, and `npm run test:seed` in `backend`, then run the API and `npm run test:smoke` with seeded PostgreSQL/Redis. In `frontend`, run `npm test` and `npm run build`. To reproduce manually, sign in as both Teachers, attempt 8/A and 9/B attendance by direct API, submit the same mark twice, correct it, PATCH only a student's name, try an inconsistent fee amount, and inspect HTTP codes and audit rows.
 
-### Manual test reproduction and result log
+## 9. Security, limitations and operations
 
-All commands below are for a **local seeded test environment**. Sign in using the browser frontend so the session cookie and `x-csrf-token` are sent for writes.
-
-| Scenario | Steps | Expected | Actual / status |
-| --- | --- | --- | --- |
-| Student edit | Admin PATCH `{ "name": "Updated Name" }` on a student | 200; unrelated fields unchanged | Record after running |
-| Fee consistency | PATCH `{"feeStatus":"PAID","amountDue":100}` | 400 (or DB constraint error translated safely); no invalid record | Record after running |
-| Duplicate attendance | POST same `studentId` and `date` twice | Second request 409; first preserved | Record after running |
-| Attendance correction | PUT existing attendance with different status | 200, history and audit updated | Record after running |
-| Cross-class access | Teacher from grade 8/A GET student in grade 9/B, then attempt attendance POST | 403 for both | Record after running |
-| Unauthenticated write | PATCH without valid session/CSRF token | 401 or 403, no mutation | Record after running |
-| User role transition | Admin PATCH Teacher role to ADMIN | Valid role change, assignments cleared | Record after running |
-
-No new pass/fail values have been fabricated for the current revision.
-
-## 9. Security, limitations, and operation
-
-The backend `.env` and generated client should be excluded from version control. Audit the final Git diff for secrets before submission. Passwords are hashed. The UI is marked `noindex`, as this is a private staff tool; public SEO would be inappropriate for student records. The API returns safe messages for invalid, missing, duplicate, and unauthorised requests. No real student data is included.
-
-The current system has no rate limiter, password reset, staff-management frontend UI, multi-branch tenancy, enrollment history, file export, fee ledger, backups, or operational monitoring. Staff administration **API** routes are available. An admin changing a student's class immediately changes which teacher may see their historical marks. Simultaneous corrections currently use last-write-wins semantics; a version field would prevent lost updates. Redis is used for session storage and BullMQ activity processing, not as a query cache. It must be running for this backend setup. Review current dependency advisories and upgrade affected packages before deployment. These limits must be addressed before real school data is used.
+Passwords use bcrypt hashes; real secrets stay in `.env`. The UI is private and marked `noindex`. Activity details omit passwords, phone numbers and fee values. Login/logout are not logged; old session rows are hidden from queries. Teacher fees are withheld. Before real school data is used, add login throttling, password reset, TLS-only deployment, staff session revocation, monitoring, backups, privacy controls and retention rules. Current-class permissions govern historical attendance after a transfer; enrollment periods would correct that. Simultaneous corrections use last-write-wins. No payment ledger, CSV export, multi-branch tenancy, or production deployment is supplied.
 
 ## 10. Next steps and scale
 
-1. Run the live smoke test in CI and add two concurrent attendance-write cases.
-2. Add login throttling, staff-management UI, session revocation, and password reset.
-3. Model enrollment periods and teacher assignment periods so past records keep their original access context.
-4. Add branch IDs to all entities and composite branch-scoped unique indexes before serving multiple schools.
-5. For 10,000+ students, measure actual list queries, add targeted indexes and keyset pagination where needed, then add backup, monitoring, and deployment automation.
+1. Add login throttling, password reset, session revocation and production observability before accepting real accounts.
+2. Model enrollment and assignment periods so a class transfer does not rewrite historical access.
+3. Add branch IDs and branch-scoped keys before supporting multiple schools.
+4. Add automated browser accessibility/responsive tests and fix remaining spec-file type errors and lint warnings.
+5. For 10,000+ students, measure query plans, retain targeted indexes, consider keyset pagination, and establish backups and migration review.
 
 ## 11. AI and external resources disclosure
 
@@ -177,10 +157,4 @@ The final implementation was reviewed and refined through manual debugging and t
 | AttendanceAudit | Attendance ID, old/new status | Attendance and User FKs | Indexed by attendance/time |
 | ActivityLog | Actor, action, entity, summary, details | User FK | Query and date filters |
 
-## Appendix C. Refactor, PATCH schemas and operations
 
-The NestJS backend uses one module, controller, service and local Zod schema per resource: `auth`, `students`, `attendance`, `users` and `activity`. Prisma, request validation, CSRF and Redis sessions remain shared infrastructure. The activity worker runs through BullMQ backed by Redis.
-
-A Zod v4 object schema with `.refine()` cannot be passed directly to `.partial()`. Keep a base object schema, derive a create schema with complete cross-field checks, and build a PATCH schema using optional fields **without reapplying create-only defaults**. The update service must merge the persisted record with supplied fields before validating business invariants. This is required for name-only edits and isolated `feeStatus` or `amountDue` updates. The earlier refactored ZIP still used `studentSchema.safeExtend({}).partial().strict()` in its PATCH controller, whereas the developer subsequently reported a working local fix. **Verify the submitted source contains the local fix** and retest both name-only and fee-only patches; this document cannot certify changes absent from the ZIP.
-
-The root `docker-compose.yml` provides development-only PostgreSQL and Redis, with local port bindings and named volumes. `pm2.config.js` runs one API instance after build from the backend directory. In production use a managed/private database and Redis, unique secrets, TLS/HTTPS, monitoring, backups and an explicitly separated worker deployment if scaling API instances.

@@ -4,7 +4,7 @@ Candidate: Saurabh. Updated: 11 October 2026. This document covers the complete 
 
 ## Architecture and decisions
 
-Vue 3 Options API screens use Axios, Pinia, Vue Router, Tailwind, and SCSS. Pinia loads `/api/auth/me` once after a page reload, then reuses the user during navigation. Route guards redirect guests to Login, signed-in users away from Login, and Teachers away from Admin pages. A protected API 401 clears client identity.
+Vue 3 Options API screens use Axios, Pinia, Vue Router, Tailwind, and SCSS. Pinia loads `/api/auth/profile` once after a page reload, then reuses the user during navigation. Route guards redirect guests to Login, signed-in users away from Login, and Teachers away from Admin pages. A protected API 401 clears client identity.
 
 NestJS uses global `ValidationPipe` with `whitelist`, `forbidNonWhitelisted`, and `transform`. Body DTOs in `src/*/dto` validate field types and nested assignments. Zod also validates query parameters, dates, page limits, and cross-field business rules such as fee status versus due amount. Services apply permissions independently of the UI. Prisma 7 writes to PostgreSQL 18, whose constraints and indexes enforce uniqueness and support paged queries.
 
@@ -18,11 +18,11 @@ Student, attendance, and user changes write their `ActivityLog` entry in the sam
 
 ## API summary
 
-All routes start with `/api`. List responses contain `{ items, total, page, per_page, total_pages }` and accept `per_page` from 1 to 100. Login and `/auth/me` return `x-csrf-token`; Axios sends it on POST, PUT, PATCH, and DELETE.
+All routes start with `/api`. List responses contain `{ items, total, page, per_page, total_pages }` and accept `per_page` from 1 to 100. Login and `/auth/profile` return `x-csrf-token`; Axios sends it on POST, PUT, PATCH, and DELETE.
 
 | Route | Access | Purpose |
 | --- | --- | --- |
-| `POST /auth/login`, `POST /auth/logout`, `GET /auth/me` | Public login; signed-in otherwise | Session lifecycle and identity |
+| `POST /auth/login`, `POST /auth/logout`, `GET /auth/profile` | Public login; signed-in otherwise | Session lifecycle and identity |
 | `GET /students`, `GET /students/:id`, `GET /students/dues` | Admin or assigned Teacher; dues Admin only | Paged student directory and outstanding fees |
 | `POST /students`, `PATCH /students/:id` | Admin | Create or edit student; admission number is generated |
 | `GET /attendance`, `GET /attendance/student/:studentId` | Admin or assigned Teacher | Paged class register and history |
@@ -54,7 +54,7 @@ The requested reference folders were adapted under `frontend/src/cmp/erp` and `f
 
 Set `DATABASE_URL`, `REDIS_URL`, `SESSION_SECRET`, and `FRONTEND_ORIGIN` in `backend/.env` using `.env.example`; do not commit real credentials. Start PostgreSQL 18 and Redis. In `backend`, run `npm ci`, `npm run db:migrate`, `npm run db:seed`, `npm run start:dev`. In `frontend`, run `npm ci`, `npm run dev`. If port 3000 is already occupied, set `PORT=3001` for the new backend process and update the frontend proxy target for that run.
 
-Backend `npm test`: 20 tests pass, including contact DTO and activity filter tests. Backend lint and build pass. Frontend route tests and production build pass. A live smoke test on port 3001 with PostgreSQL and Redis passed login, pagination, CSRF, student creation with contact fields, fees, attendance, teacher class boundaries, user management, and activity visibility. Browser visual checks should still be performed before submission.
+Backend `npm test`: 24 tests pass across 9 files, including PATCH defaults, contact DTO and activity filter tests. Backend lint exits successfully with unused-import warnings; backend build passes. Frontend 3 route tests and production build pass. A live smoke test on port 3002 with PostgreSQL and Redis passed concurrent duplicate attendance, admission uniqueness, correction audit, partial student updates, cross-class denial, role changes, CSRF and activity visibility. The fresh-seed test applied all migrations and seeded a temporary database twice with stable counts. A standalone full `tsc --noEmit` reports errors in older spec files excluded from the Nest build. Browser visual checks should still be performed before submission.
 
 ## Assumptions and limitations
 

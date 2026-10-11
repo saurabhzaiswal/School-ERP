@@ -12,7 +12,7 @@ export const useSessionStore = defineStore('session', {
       finally { this.pending = null }
     },
     async refresh() {
-      try { this.user = await api('/auth/me') }
+      try { this.user = await api('/auth/profile') }
       catch { this.user = null }
       finally { this.ready = true }
       return this.user

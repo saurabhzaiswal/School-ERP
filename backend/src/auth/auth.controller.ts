@@ -53,7 +53,7 @@ export class AuthController {
     response.clearCookie('school_session', { path: '/' });
     return { ok: true };
   }
-  @Get('me') async me(
+  @Get('profile') async profile(
     @Req() req: Request,
     @Res({ passthrough: true }) response: Response,
   ) {

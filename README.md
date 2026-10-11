@@ -13,7 +13,7 @@ A small Student, Attendance, and Fee Follow-up module. School staff application 
 | Manage staff accounts and class assignments (`/api/users`) | Yes | No |
 | Activity log (`/api/activity`) | All matching events | Own events only |
 
-Student admission numbers are generated server-side. Attendance is unique per student/date, and changes write audit records. Teacher access is enforced by backend services, not just the UI. The backend also supports account activation, gender/contact fields, teacher assignments, and activity filters. There may not be a frontend screen for every API endpoint.
+Student admission numbers are generated server-side. Attendance is unique per student/date, and changes write audit records. Teacher access is enforced by backend services, not just the UI. The frontend includes staff management and activity screens. Student and staff gender/contact fields are optional.
 
 ## Requirements
 
@@ -63,7 +63,7 @@ npm run dev
 
 Open `http://localhost:5173`. The Vite development proxy targets the backend at `http://localhost:3000/api`.
 
-> Database reset deletes all records in the selected database: `cd backend; npx prisma migrate reset --force; npm run db:seed`. Double-check `DATABASE_URL` before running. Prisma may automatically run the configured seed during reset; the second seed is unnecessary if it already ran. For ordinary updates use `npm run db:migrate`, not a reset.
+For a fresh database, point `DATABASE_URL` at that database, then run `npm run db:migrate` and `npm run db:seed`. **Do not reset or drop an existing database until you have checked the URL and saved any data you need.** `npm run db:seed` can be rerun without duplicating its demo records. It creates one Admin, two Teachers, 12 fictional students with contact fields, and three days of sample attendance. The teacher accounts cover grade 8/A and 9/B; grade 10/A has no assigned demo teacher.
 
 ## Demo sign-in
 
@@ -72,7 +72,7 @@ Open `http://localhost:5173`. The Vite development proxy targets the backend at 
 | Admin | `admin@school.local` | `SchoolDemo@2026` |
 | Teacher | `teacher@school.local` | `SchoolDemo@2026` |
 
-The bundled seed assigns the demo teacher to grade 8, section A. If you replaced the seed with an expanded version, verify the latest accounts and class assignments in `backend/prisma/seed.ts`. You can override the demo password using `DEMO_PASSWORD` before seeding.
+These passwords are local demo credentials only. You can override them with `DEMO_PASSWORD` before seeding. The seed deliberately uses fictional names, `example.test` student email addresses, and reserved 202-555-01xx phone numbers.
 
 ## Backend structure
 
@@ -88,13 +88,13 @@ backend/
   prisma/         schema.prisma, migrations/, seed.ts
 ```
 
-All HTTP endpoints use `/api` as their prefix. Zod validates request schemas; Nest's global ValidationPipe also checks DTOs. For student PATCH requests, the **locally fixed version** should use a separate partial update schema. Do not call `.partial()` directly on a refined create schema (Zod v4 throws). Do not allow create defaults to overwrite omitted PATCH fields. The service should validate the merged persisted and patched fee values. **Important:** the earlier `backend_refactored.zip` still contains `studentSchema.safeExtend({}).partial().strict()`; confirm the fixed local source is what you submit.
+All HTTP endpoints use `/api` as their prefix. Zod validates request schemas; Nest's global ValidationPipe also checks DTOs. Student PATCH uses a separate partial schema without create defaults, then validates fee rules against the persisted record merged with supplied fields. A name-only edit therefore preserves fee status and amount.
 
 ### Key routes
 
 | Method | Path | Description |
 | --- | --- | --- |
-| POST / GET / POST | `/api/auth/login`, `/api/auth/me`, `/api/auth/logout` | Login, session, logout |
+| POST / GET / POST | `/api/auth/login`, `/api/auth/profile`, `/api/auth/logout` | Login, current profile, logout |
 | GET, POST | `/api/students` | List/create students |
 | GET, PATCH | `/api/students/:id` | Student details/update |
 | GET | `/api/students/dues` | Outstanding fee list (Admin) |
@@ -106,7 +106,7 @@ All HTTP endpoints use `/api` as their prefix. Zod validates request schemas; Ne
 | GET, PATCH | `/api/users/:id` | Staff details/update (Admin) |
 | GET | `/api/activity` | Activity audit list |
 
-Login sessions are stored in Redis via `express-session`. For authenticated write operations, send the `x-csrf-token` header obtained from login or `/api/auth/me` along with the session cookie. The frontend Axios client handles this. `PATCH /api/users/:id` enforces teacher assignment and last-admin protections; `PATCH /api/students/:id` must preserve correct fee status/amount combinations.
+Login sessions are stored in Redis via `express-session`. For authenticated write operations, send the `x-csrf-token` header obtained from login or `/api/auth/profile` along with the session cookie. The frontend Axios client handles this. `PATCH /api/users/:id` enforces teacher assignment and last-admin protections; `PATCH /api/students/:id` preserves correct fee status/amount combinations.
 
 ## Validation and testing
 
@@ -117,11 +117,12 @@ npm test
 npm run lint
 npm run build
 npm run test:smoke
+npm run test:seed
 ```
 
-Run `npm run test:smoke` **only while** the API, PostgreSQL and Redis are running and the demo database is seeded. It exercises real HTTP/database paths, so use an isolated development/test database. Run `npm run build` separately from `frontend` to verify the Vue build.
+Run `npm run test:smoke` **only while** the API, PostgreSQL and Redis are running and the demo database is seeded. It creates and cleans up temporary records. `npm run test:seed` creates, migrates, seeds twice, verifies and drops a disposable PostgreSQL database; the configured database user needs database creation rights. Run `npm run build` and `npm test` from `frontend` as well.
 
-**Verification note:** The refactored backend was not fully built or live-tested in this editing environment; earlier test results do not verify the latest source or configuration. After applying the student PATCH fix locally, rerun every command above and record results in the handover.
+**Verification on 11 October 2026:** Backend build passed; Vitest passed 24 tests across 9 files; the lint command exited successfully with unused-import warnings in older resource files. Frontend build and 3 route tests passed. The live smoke test passed using the existing local demo database, and the fresh-seed check passed twice in a disposable database. The standalone full TypeScript check (`npx tsc --noEmit -p tsconfig.json`) still reports type errors in older `src/http.spec.ts` and `src/rules.spec.ts`; those files are outside the normal Nest build. See [the test results](TECHNICAL_DESIGN.md#8-test-plan-and-results).
 
 ## PM2 deployment
 
@@ -149,7 +150,7 @@ pm2 logs school-erp-api
 4. Sign in as Teacher, attempt a direct GET/POST for a student outside assigned grade/section (expect HTTP 403). Confirm teachers cannot access `/api/students/dues` or `/api/users`.
 5. As Admin, change a Teacher to Admin and verify assignments are cleared; check protected last-admin rules.
 
-Record *actual* results before marking these tests as passed.
+The automated results and remaining manual checks are recorded in the technical handover. Recheck responsive layouts in a browser on the target machine.
 
 ## Known limitations
 

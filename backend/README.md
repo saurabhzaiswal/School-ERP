@@ -1,6 +1,8 @@
 # School ERP backend
 
-The API provides student records, attendance, fee follow-up, staff accounts, and an activity log. PostgreSQL 18 and Redis must be running. Configure `.env` from `.env.example` with `DATABASE_URL`, `REDIS_URL`, and a random `SESSION_SECRET` (at least 32 characters). Run `npm ci`, `npm run db:migrate`, `npm run db:seed`, and `npm run start:dev`. Use `npm test`, `npm run lint`, `npm run build`, and `npm run test:smoke` to verify it. The smoke test needs the API, PostgreSQL, and Redis running.
+The API provides student records, attendance, fee follow-up, staff accounts, and an activity log. PostgreSQL 18 and Redis must be running. Configure `.env` from `.env.example` with `DATABASE_URL`, `REDIS_URL`, and a random `SESSION_SECRET` (at least 32 characters). Run `npm ci`, `npm run db:migrate`, `npm run db:seed`, and `npm run start:dev`. The seed creates 3 local demo users, 12 fictional students with contact fields, and 30 attendance marks; rerunning it does not duplicate these records. `GET /api/auth/profile` returns the signed-in user and CSRF header.
+
+Use `npm test`, `npm run lint`, `npm run build`, `npm run test:smoke`, and `npm run test:seed` to verify it. The smoke test needs the API, PostgreSQL, Redis and seeded demo users running. The seed test creates and drops its own temporary PostgreSQL database; the configured user needs database creation rights. The root [technical design](../TECHNICAL_DESIGN.md#8-test-plan-and-results) records the actual results and remaining type-check warnings.
 
 Admins manage staff through `/api/users` (`GET`, `POST`, `GET /:id`, `PATCH /:id`); `GET /api/users/stats` returns role counts. Teacher accounts need at least one grade/section assignment. Inactive accounts cannot sign in or use an existing session. The last active admin cannot be disabled. User responses never include password hashes.
 
